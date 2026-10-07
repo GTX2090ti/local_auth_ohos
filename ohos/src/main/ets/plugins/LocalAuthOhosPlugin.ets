@@ -32,7 +32,7 @@ const CHANNEL_NAME: string = 'org.tsinbeilabs.local_auth_ohos/auth';
 /**
  * Native half of local_auth_ohos: wraps the UserIAM `userAuth` kit.
  *
- * Credential selection order: fingerprint -> face -> PIN (PIN only when the
+ * Credential selection order: face -> fingerprint -> PIN (PIN only when the
  * caller allows non-biometric fallback, i.e. `biometricOnly` is false).
  * Authentication runs at trust level ATL3 with the system-rendered prompt.
  */
@@ -125,11 +125,12 @@ export default class LocalAuthOhosPlugin implements FlutterPlugin, MethodCallHan
 
   private enrolledBiometrics(): string[] {
     const out: string[] = [];
-    if (this.isAvailable(userAuth.UserAuthType.FINGERPRINT)) {
-      out.push('fingerprint');
-    }
+    // Face first: the caller prefers face unlock, fingerprint as fallback.
     if (this.isAvailable(userAuth.UserAuthType.FACE)) {
       out.push('face');
+    }
+    if (this.isAvailable(userAuth.UserAuthType.FINGERPRINT)) {
+      out.push('fingerprint');
     }
     if (this.isAvailable(userAuth.UserAuthType.PIN)) {
       out.push('weak');
@@ -160,10 +161,12 @@ export default class LocalAuthOhosPlugin implements FlutterPlugin, MethodCallHan
     const biometricOnly: boolean = map.get('biometricOnly') === true;
 
     let authType: number = -1;
-    if (this.isAvailable(userAuth.UserAuthType.FINGERPRINT)) {
-      authType = userAuth.UserAuthType.FINGERPRINT;
-    } else if (this.isAvailable(userAuth.UserAuthType.FACE)) {
+    // Face unlock is preferred; fall back to fingerprint, then PIN
+    // (PIN only when the caller allows non-biometric fallback).
+    if (this.isAvailable(userAuth.UserAuthType.FACE)) {
       authType = userAuth.UserAuthType.FACE;
+    } else if (this.isAvailable(userAuth.UserAuthType.FINGERPRINT)) {
+      authType = userAuth.UserAuthType.FINGERPRINT;
     } else if (!biometricOnly && this.isAvailable(userAuth.UserAuthType.PIN)) {
       authType = userAuth.UserAuthType.PIN;
     }
