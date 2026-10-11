@@ -32,8 +32,9 @@ const CHANNEL_NAME: string = 'org.tsinbeilabs.local_auth_ohos/auth';
 /**
  * Native half of local_auth_ohos: wraps the UserIAM `userAuth` kit.
  *
- * Credential selection order: face -> fingerprint -> PIN (PIN only when the
- * caller allows non-biometric fallback, i.e. `biometricOnly` is false).
+ * Credential selection: face and fingerprint are enabled together, so the
+ * system dialog accepts either; PIN is added unless the caller sets
+ * `biometricOnly` to true.
  * Authentication runs at trust level ATL3 with the system-rendered prompt.
  */
 export default class LocalAuthOhosPlugin implements FlutterPlugin, MethodCallHandler {
@@ -160,18 +161,21 @@ export default class LocalAuthOhosPlugin implements FlutterPlugin, MethodCallHan
     const map: ESObject = call.args;
     const biometricOnly: boolean = map.get('biometricOnly') === true;
 
-    let authType: number = -1;
-    // Face unlock is preferred; fall back to fingerprint, then PIN
-    // (PIN only when the caller allows non-biometric fallback).
+    // Enable face and fingerprint at the same time: the system auth dialog
+    // offers every enrolled credential and accepts whichever the user
+    // authenticates with. PIN is included unless biometricOnly is set.
+    const authTypes: userAuth.UserAuthType[] = [];
     if (this.isAvailable(userAuth.UserAuthType.FACE)) {
-      authType = userAuth.UserAuthType.FACE;
-    } else if (this.isAvailable(userAuth.UserAuthType.FINGERPRINT)) {
-      authType = userAuth.UserAuthType.FINGERPRINT;
-    } else if (!biometricOnly && this.isAvailable(userAuth.UserAuthType.PIN)) {
-      authType = userAuth.UserAuthType.PIN;
+      authTypes.push(userAuth.UserAuthType.FACE);
+    }
+    if (this.isAvailable(userAuth.UserAuthType.FINGERPRINT)) {
+      authTypes.push(userAuth.UserAuthType.FINGERPRINT);
+    }
+    if (!biometricOnly && this.isAvailable(userAuth.UserAuthType.PIN)) {
+      authTypes.push(userAuth.UserAuthType.PIN);
     }
 
-    if (authType < 0) {
+    if (authTypes.length === 0) {
       result.error(
         biometricOnly ? 'noBiometricsEnrolled' : 'noCredentialsSet',
         'No enrolled credential is available on this device',
@@ -186,7 +190,7 @@ export default class LocalAuthOhosPlugin implements FlutterPlugin, MethodCallHan
       const challenge = new Uint8Array(16);
       const authParam: userAuth.AuthParam = {
         challenge: challenge,
-        authType: [authType as userAuth.UserAuthType],
+        authType: authTypes,
         authTrustLevel: userAuth.AuthTrustLevel.ATL3,
       };
       const widgetParam: userAuth.WidgetParam = {
